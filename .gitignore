@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+# Virtual env
+venv/
+.venv/
+# IDE
+.vscode/
+.idea/
+*.swp
+# Secrets
+.env
+*.env.local
+# Data & Models (local only)
+data/*.db
+data/*.sqlite
+models/*.joblib
+models/*.pkl
+# OS
+.DS_Store
+Thumbs.db
+# Logs
+*.log
