@@ -1,9 +1,15 @@
 """
-fetcher.py — Fetch recent news articles for Indian stocks using Google News.
+fetcher.py — Fetch recent news articles for Indian stocks via Google News RSS.
+
+Uses requests + feedparser for reliable RSS parsing with proper SSL handling.
 """
 
-from gnews import GNews
-from src.core.config import NEWS_LOOKBACK_DAYS
+import urllib.parse
+from datetime import datetime
+
+import feedparser
+import requests
+
 from src.core.database import get_db
 from src.data.universe import get_universe
 
@@ -11,32 +17,50 @@ from src.data.universe import get_universe
 def fetch_news(company_name: str, max_results: int = 10,
                period: str = None) -> list[dict]:
     """
-    Fetch recent news articles about a company from Google News.
+    Fetch recent news articles about a company from Google News RSS.
 
     Args:
         company_name: Human-readable company name.
         max_results: Maximum articles to return.
-        period: Lookback period (e.g. '7d').
+        period: Lookback period (e.g. '7d') — used for context but RSS returns recent.
 
     Returns:
         List of dicts with keys: title, description, published_date, url, source.
     """
-    if period is None:
-        period = f"{NEWS_LOOKBACK_DAYS}d"
-
     articles = []
     try:
-        gn = GNews(language="en", country="IN", max_results=max_results, period=period)
-        query = f"{company_name} stock"
-        raw = gn.get_news(query)
+        query = urllib.parse.quote(f"{company_name} stock")
+        url = f"https://news.google.com/rss/search?q={query}&hl=en-IN&gl=IN&ceid=IN:en"
 
-        for article in raw:
+        # Use requests for reliable SSL handling, then parse with feedparser
+        resp = requests.get(url, timeout=15, headers={
+            "User-Agent": "Mozilla/5.0 (compatible; StockResearchBot/1.0)"
+        })
+        resp.raise_for_status()
+        feed = feedparser.parse(resp.content)
+
+        for entry in feed.entries[:max_results]:
+            # Extract source from title (Google News format: "Title - Source")
+            title = entry.get("title", "")
+            source = "Unknown"
+            if " - " in title:
+                parts = title.rsplit(" - ", 1)
+                title = parts[0]
+                source = parts[1] if len(parts) > 1 else "Unknown"
+
+            published = entry.get("published", "")
+            try:
+                dt = datetime.strptime(published, "%a, %d %b %Y %H:%M:%S %Z")
+                published = dt.strftime("%Y-%m-%d %H:%M")
+            except (ValueError, TypeError):
+                pass
+
             articles.append({
-                "title": article.get("title", ""),
-                "description": article.get("description", ""),
-                "published_date": article.get("published date", ""),
-                "url": article.get("url", ""),
-                "source": article.get("publisher", {}).get("title", "Unknown"),
+                "title": title,
+                "description": entry.get("summary", ""),
+                "published_date": published,
+                "url": entry.get("link", ""),
+                "source": source,
             })
     except Exception as e:
         print(f"    ⚠  News fetch error for {company_name}: {e}")
@@ -72,6 +96,7 @@ def fetch_all_news(with_sentiment: bool = True):
     print("📰 FETCHING RECENT NEWS")
     print("━" * 60)
 
+    success = 0
     for i, (symbol, info) in enumerate(universe.items(), 1):
         name = info["name"]
         print(f"  [{i:>2}/{total}] {name}...", end=" ", flush=True)
@@ -89,8 +114,9 @@ def fetch_all_news(with_sentiment: bool = True):
             store_news(symbol, articles, neutral)
 
         print(f"✓ {len(articles)} articles")
+        success += 1
 
-    print("\n  ✅ News fetched for all stocks.\n")
+    print(f"\n  ✅ News fetched for {success}/{total} stocks.\n")
 
 
 if __name__ == "__main__":
