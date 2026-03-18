@@ -61,7 +61,7 @@ def cmd_news(args):
         print(f"     📅 {article.get('published_date', 'N/A')} | 📰 {article.get('source', 'N/A')}")
         print()
 
-    print(f"  ─── Aggregate Sentiment ───")
+    print("  ─── Aggregate Sentiment ───")
     print(f"  Overall: {agg['overall_label'].upper()} (avg: {agg['avg_compound']:+.4f})")
     print(f"  🟢 Positive: {agg['positive_pct']}% | 🔴 Negative: {agg['negative_pct']}% | ⚪ Neutral: {agg['neutral_pct']}%\n")
 
@@ -108,8 +108,8 @@ def cmd_rank(args):
     headers = ["#", "Stock", "Symbol", "Sector", "Score", "Model", "Sentiment", "Mom(20d)", "RSI"]
     print(tabulate(table_data, headers=headers, tablefmt="rounded_grid"))
 
-    print(f"\n  ⚠️  DISCLAIMER: These are research signals only, NOT investment advice.")
-    print(f"  Always do your own research and consult a financial advisor.\n")
+    print("\n  ⚠️  DISCLAIMER: These are research signals only, NOT investment advice.")
+    print("  Always do your own research and consult a financial advisor.\n")
 
 
 def cmd_pipeline(args):
@@ -149,10 +149,10 @@ def main():
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # update
-    sub_update = subparsers.add_parser("update", help="Download data and compute features")
+    subparsers.add_parser("update", help="Download data and compute features")
 
     # train
-    sub_train = subparsers.add_parser("train", help="Train the ML model")
+    subparsers.add_parser("train", help="Train the ML model")
 
     # news
     sub_news = subparsers.add_parser("news", help="Get recent news for a stock")
@@ -164,7 +164,7 @@ def main():
     sub_rank.add_argument("--sector", type=str, default="", help="Filter by sector")
 
     # pipeline
-    sub_pipeline = subparsers.add_parser("pipeline", help="Run full pipeline end-to-end")
+    subparsers.add_parser("pipeline", help="Run full pipeline end-to-end")
 
     if len(sys.argv) == 1:
         parser.print_help()

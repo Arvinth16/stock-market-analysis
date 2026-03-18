@@ -3,7 +3,6 @@ fetcher.py — Download historical OHLCV data for Indian stocks from Yahoo Finan
 """
 
 import warnings
-warnings.filterwarnings("ignore")
 
 import pandas as pd
 import yfinance as yf
@@ -12,6 +11,9 @@ from datetime import datetime, timedelta
 from src.core.config import HISTORICAL_YEARS
 from src.core.database import get_db, init_db
 from src.data.universe import get_symbols, get_symbol_name
+
+warnings.filterwarnings("ignore")
+
 
 
 def fetch_ohlcv(symbol: str, years: int = HISTORICAL_YEARS) -> pd.DataFrame:

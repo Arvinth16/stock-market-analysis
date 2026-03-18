@@ -10,13 +10,13 @@ Tools:
 """
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import pandas as pd
 from mcp.server.fastmcp import FastMCP
 
 from src.core.database import get_db, init_db
-from src.data.universe import get_universe, get_symbol_name, get_symbol_sector
+from src.data.universe import get_universe, get_symbol_name
 from src.data.fetcher import load_ohlcv
 from src.models.scorer import score_all_stocks
 from src.news.fetcher import fetch_news

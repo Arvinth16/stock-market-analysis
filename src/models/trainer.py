@@ -11,12 +11,10 @@ import joblib
 from xgboost import XGBClassifier
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score, roc_auc_score,
-    classification_report,
 )
 
 from src.core.config import XGBOOST_PARAMS, MODEL_DIR
 from src.core.database import get_db
-from src.data.features import FEATURE_COLUMNS
 
 
 def load_training_data() -> pd.DataFrame:
@@ -70,7 +68,6 @@ def walk_forward_train(df: pd.DataFrame, n_splits: int = 5):
     split_size = len(dates) // (n_splits + 1)
 
     metrics_list = []
-    best_model = None
     best_auc = 0
 
     for fold in range(n_splits):
@@ -117,7 +114,6 @@ def walk_forward_train(df: pd.DataFrame, n_splits: int = 5):
 
         if auc > best_auc:
             best_auc = auc
-            best_model = model
 
     if not metrics_list:
         print("  ✗ No valid folds produced. Check data quality.")
@@ -125,7 +121,7 @@ def walk_forward_train(df: pd.DataFrame, n_splits: int = 5):
 
     # Print average metrics
     avg = pd.DataFrame(metrics_list).mean(numeric_only=True)
-    print(f"\n  ─── Average Across Folds ───")
+    print("\n  ─── Average Across Folds ───")
     print(f"  AUC:       {avg['auc']:.4f}")
     print(f"  Precision: {avg['precision']:.4f}")
     print(f"  Recall:    {avg['recall']:.4f}")
@@ -133,7 +129,7 @@ def walk_forward_train(df: pd.DataFrame, n_splits: int = 5):
     print(f"  Accuracy:  {avg['accuracy']:.4f}")
 
     # Train final model on ALL data
-    print(f"\n  Training final model on full dataset...")
+    print("\n  Training final model on full dataset...")
     X_all = df_clean[DB_FEATURE_COLS].values
     y_all = df_clean["label"].values
     final_model = XGBClassifier(**XGBOOST_PARAMS)

@@ -1,5 +1,6 @@
 """Tests for features."""
-import pandas as pd, numpy as np
+import pandas as pd
+import numpy as np
 from src.data.features import compute_sma, compute_rsi, compute_features, compute_labels
 
 def _df():

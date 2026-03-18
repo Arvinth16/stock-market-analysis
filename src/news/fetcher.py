@@ -5,7 +5,7 @@ fetcher.py — Fetch recent news articles for Indian stocks using Google News.
 from gnews import GNews
 from src.core.config import NEWS_LOOKBACK_DAYS
 from src.core.database import get_db
-from src.data.universe import get_universe, get_symbol_name
+from src.data.universe import get_universe
 
 
 def fetch_news(company_name: str, max_results: int = 10,
@@ -90,7 +90,7 @@ def fetch_all_news(with_sentiment: bool = True):
 
         print(f"✓ {len(articles)} articles")
 
-    print(f"\n  ✅ News fetched for all stocks.\n")
+    print("\n  ✅ News fetched for all stocks.\n")
 
 
 if __name__ == "__main__":

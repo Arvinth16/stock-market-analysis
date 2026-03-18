@@ -1,6 +1,5 @@
 """Tests for data fetcher module."""
 
-import pandas as pd
 from src.data.universe import get_symbols, get_symbol_name, get_symbol_sector, get_universe
 
 

@@ -53,7 +53,6 @@ NIFTY_50 = {
     "HDFCLIFE.NS": {"name": "HDFC Life Insurance", "sector": "Insurance"},
     "TATACONSUM.NS": {"name": "Tata Consumer Products", "sector": "FMCG"},
     "BAJAJ-AUTO.NS": {"name": "Bajaj Auto", "sector": "Auto"},
-    "WIPRO.NS": {"name": "Wipro", "sector": "IT"},
     "UPL.NS": {"name": "UPL Limited", "sector": "Chemicals"},
 }
 
