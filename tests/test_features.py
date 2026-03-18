@@ -16,7 +16,7 @@ def test_rsi():
     assert (compute_rsi(_df()["close"]).dropna()>=0).all()
 
 def test_features():
-    for c in ["sma_20","rsi_14","macd"]:
+    for c in ["price_vs_sma20","rsi_14","macd_norm"]:
         assert c in compute_features(_df()).columns
 
 def test_labels():

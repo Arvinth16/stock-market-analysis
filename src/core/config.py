@@ -20,7 +20,7 @@ MODEL_DIR = os.getenv("MODEL_DIR", str(PROJECT_ROOT / "models"))
 NEWS_API_KEY = os.getenv("NEWS_API_KEY", "")
 
 # ─── Data Parameters ─────────────────────────────────────────────────────────
-HISTORICAL_YEARS = 2              # How many years of OHLCV history to fetch
+HISTORICAL_YEARS = 5              # How many years of OHLCV history to fetch
 NEWS_LOOKBACK_DAYS = 7            # How many days of news to fetch
 
 # ─── Feature / Model Parameters ──────────────────────────────────────────────

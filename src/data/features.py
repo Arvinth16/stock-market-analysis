@@ -76,25 +76,34 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     features = pd.DataFrame(index=df.index)
 
     # ─── Trend: Moving Averages ───────────────────────────────────────
-    features["sma_20"] = compute_sma(close, 20)
-    features["sma_50"] = compute_sma(close, 50)
-    features["sma_200"] = compute_sma(close, 200)
+    sma_20 = compute_sma(close, 20)
+    sma_50 = compute_sma(close, 50)
+    sma_200 = compute_sma(close, 200)
 
     # Price relative to SMAs (%)
-    features["price_vs_sma20"] = ((close - features["sma_20"]) / features["sma_20"]) * 100
-    features["price_vs_sma50"] = ((close - features["sma_50"]) / features["sma_50"]) * 100
-    features["price_vs_sma200"] = ((close - features["sma_200"]) / features["sma_200"]) * 100
+    features["price_vs_sma20"] = ((close - sma_20) / sma_20) * 100
+    features["price_vs_sma50"] = ((close - sma_50) / sma_50) * 100
+    features["price_vs_sma200"] = ((close - sma_200) / sma_200) * 100
+
+    # Z-scores
+    std_20 = close.rolling(20).std()
+    std_50 = close.rolling(50).std()
+    features["close_zscore_20"] = (close - sma_20) / std_20.replace(0, np.nan)
+    features["close_zscore_50"] = (close - sma_50) / std_50.replace(0, np.nan)
 
     # ─── Momentum: RSI, MACD ─────────────────────────────────────────
     features["rsi_14"] = compute_rsi(close, 14)
     macd, macd_sig, macd_hist = compute_macd(close)
-    features["macd"] = macd
-    features["macd_signal"] = macd_sig
-    features["macd_hist"] = macd_hist
+    
+    # Normalize MACD by price so it works across different price scales
+    features["macd_norm"] = (macd / close) * 100
+    features["macd_signal_norm"] = (macd_sig / close) * 100
+    features["macd_hist_norm"] = (macd_hist / close) * 100
 
     # ─── Volatility ──────────────────────────────────────────────────
     features["bb_width"] = compute_bollinger_band_width(close, 20)
-    features["atr_14"] = compute_atr(high, low, close, 14)
+    atr_14 = compute_atr(high, low, close, 14)
+    features["atr_percent"] = (atr_14 / close) * 100
     features["volatility_20"] = close.pct_change().rolling(20).std() * np.sqrt(252)  # annualized
 
     # ─── Volume ──────────────────────────────────────────────────────
@@ -139,14 +148,17 @@ def store_features(symbol: str, features_df: pd.DataFrame, labels: pd.Series):
             lbl_val = int(lbl) if pd.notna(lbl) else None
             conn.execute(
                 """INSERT OR REPLACE INTO features
-                   (symbol, date, sma_20, sma_50, sma_200, rsi_14, macd, macd_signal,
-                    macd_hist, bb_width, atr_14, volatility_20, volume_ratio,
+                   (symbol, date, close_zscore_20, close_zscore_50,
+                    price_vs_sma20, price_vs_sma50, price_vs_sma200,
+                    rsi_14, macd_norm, macd_signal_norm, macd_hist_norm,
+                    bb_width, atr_percent, volatility_20, volume_ratio,
                     dist_52w_high, dist_52w_low, return_5d, return_10d, return_20d, label)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (symbol, date.strftime("%Y-%m-%d"),
-                 _safe(row, "sma_20"), _safe(row, "sma_50"), _safe(row, "sma_200"),
-                 _safe(row, "rsi_14"), _safe(row, "macd"), _safe(row, "macd_signal"),
-                 _safe(row, "macd_hist"), _safe(row, "bb_width"), _safe(row, "atr_14"),
+                 _safe(row, "close_zscore_20"), _safe(row, "close_zscore_50"),
+                 _safe(row, "price_vs_sma20"), _safe(row, "price_vs_sma50"), _safe(row, "price_vs_sma200"),
+                 _safe(row, "rsi_14"), _safe(row, "macd_norm"), _safe(row, "macd_signal_norm"),
+                 _safe(row, "macd_hist_norm"), _safe(row, "bb_width"), _safe(row, "atr_percent"),
                  _safe(row, "volatility_20"), _safe(row, "volume_ratio"),
                  _safe(row, "dist_52w_high"), _safe(row, "dist_52w_low"),
                  _safe(row, "return_5d"), _safe(row, "return_10d"), _safe(row, "return_20d"),
@@ -163,13 +175,14 @@ def _safe(row, col):
 
 
 FEATURE_COLUMNS = [
-    "sma_20", "sma_50", "sma_200",
+    "close_zscore_20", "close_zscore_50",
     "price_vs_sma20", "price_vs_sma50", "price_vs_sma200",
-    "rsi_14", "macd", "macd_signal", "macd_hist",
-    "bb_width", "atr_14", "volatility_20", "volume_ratio",
+    "rsi_14", "macd_norm", "macd_signal_norm", "macd_hist_norm",
+    "bb_width", "atr_percent", "volatility_20", "volume_ratio",
     "dist_52w_high", "dist_52w_low",
     "return_5d", "return_10d", "return_20d",
 ]
+
 
 
 def compute_and_store_all():

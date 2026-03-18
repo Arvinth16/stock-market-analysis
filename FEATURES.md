@@ -6,18 +6,17 @@
 
 | Feature | Description | Window | Category |
 |---|---|---|---|
-| `sma_20` | Simple Moving Average | 20 days | Trend |
-| `sma_50` | Simple Moving Average | 50 days | Trend |
-| `sma_200` | Simple Moving Average | 200 days | Trend |
+| `close_zscore_20` | Z-score of Close Price | 20 days | Trend |
+| `close_zscore_50` | Z-score of Close Price | 50 days | Trend |
 | `price_vs_sma20` | Price distance from SMA(20) as % | 20 days | Trend |
 | `price_vs_sma50` | Price distance from SMA(50) as % | 50 days | Trend |
 | `price_vs_sma200` | Price distance from SMA(200) as % | 200 days | Trend |
 | `rsi_14` | Relative Strength Index | 14 days | Momentum |
-| `macd` | MACD line (EMA12 − EMA26) | 12/26 days | Momentum |
-| `macd_signal` | MACD signal line (EMA9 of MACD) | 9 days | Momentum |
-| `macd_hist` | MACD histogram (MACD − Signal) | — | Momentum |
+| `macd_norm` | MACD normalized by price (%) | 12/26 days | Momentum |
+| `macd_signal_norm` | MACD signal normalized (%) | 9 days | Momentum |
+| `macd_hist_norm` | MACD histogram normalized (%) | — | Momentum |
 | `bb_width` | Bollinger Band width (% of SMA) | 20 days | Volatility |
-| `atr_14` | Average True Range | 14 days | Volatility |
+| `atr_percent` | Average True Range as % of price | 14 days | Volatility |
 | `volatility_20` | Annualized 20-day rolling volatility | 20 days | Volatility |
 | `volume_ratio` | Current volume ÷ 20-day avg volume | 20 days | Volume |
 | `dist_52w_high` | Distance from 52-week high (%) | 252 days | Price Action |

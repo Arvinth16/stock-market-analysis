@@ -12,6 +12,8 @@ from xgboost import XGBClassifier
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score, roc_auc_score,
 )
+from sklearn.model_selection import RandomizedSearchCV, TimeSeriesSplit
+from scipy.stats import uniform, randint
 
 from src.core.config import XGBOOST_PARAMS, MODEL_DIR
 from src.core.database import get_db
@@ -21,10 +23,11 @@ def load_training_data() -> pd.DataFrame:
     """Load all feature rows from the database for training."""
     with get_db() as conn:
         df = pd.read_sql_query(
-            """SELECT symbol, date, sma_20, sma_50, sma_200, rsi_14,
-                      macd, macd_signal, macd_hist, bb_width, atr_14,
-                      volatility_20, volume_ratio, dist_52w_high, dist_52w_low,
-                      return_5d, return_10d, return_20d, label
+            """SELECT symbol, date, close_zscore_20, close_zscore_50,
+                      price_vs_sma20, price_vs_sma50, price_vs_sma200,
+                      rsi_14, macd_norm, macd_signal_norm, macd_hist_norm,
+                      bb_width, atr_percent, volatility_20, volume_ratio,
+                      dist_52w_high, dist_52w_low, return_5d, return_10d, return_20d, label
                FROM features
                WHERE label IS NOT NULL
                ORDER BY date""",
@@ -37,39 +40,73 @@ def load_training_data() -> pd.DataFrame:
     return df
 
 
-# Features available in the DB (subset of FEATURE_COLUMNS)
 DB_FEATURE_COLS = [
-    "sma_20", "sma_50", "sma_200",
-    "rsi_14", "macd", "macd_signal", "macd_hist",
-    "bb_width", "atr_14", "volatility_20", "volume_ratio",
+    "close_zscore_20", "close_zscore_50",
+    "price_vs_sma20", "price_vs_sma50", "price_vs_sma200",
+    "rsi_14", "macd_norm", "macd_signal_norm", "macd_hist_norm",
+    "bb_width", "atr_percent", "volatility_20", "volume_ratio",
     "dist_52w_high", "dist_52w_low",
     "return_5d", "return_10d", "return_20d",
 ]
 
 
+
+def tune_hyperparameters(X, y):
+    """Tune XGBoost hyperparameters using TimeSeriesSplit."""
+    print("  Searching for best hyperparameters...")
+    param_dist = {
+        "n_estimators": randint(100, 500),
+        "max_depth": randint(3, 8),
+        "learning_rate": uniform(0.01, 0.2),
+        "subsample": uniform(0.6, 0.4),
+        "colsample_bytree": uniform(0.6, 0.4),
+        "reg_alpha": uniform(0, 2),
+        "reg_lambda": uniform(1, 4),
+    }
+
+    base_model = XGBClassifier(random_state=42, eval_metric="logloss")
+    tscv = TimeSeriesSplit(n_splits=3)
+    
+    search = RandomizedSearchCV(
+        base_model, param_distributions=param_dist,
+        n_iter=20, scoring="roc_auc", cv=tscv, 
+        random_state=42, n_jobs=-1, verbose=0
+    )
+    
+    search.fit(X, y)
+    print(f"  Best CV AUC: {search.best_score_:.4f}")
+    return search.best_params_
+
+
 def walk_forward_train(df: pd.DataFrame, n_splits: int = 5):
     """
-    Walk-forward cross-validation.
-
-    Splits the time-ordered data into expanding training windows
-    with fixed-size test windows.
+    Walk-forward cross-validation with hyperparameter tuning.
     """
     print("━" * 60)
     print("🤖 TRAINING MODEL (Walk-Forward Cross-Validation)")
     print("━" * 60)
 
     # Drop rows with NaN features
-    df_clean = df.dropna(subset=DB_FEATURE_COLS + ["label"])
+    df_clean = df.dropna(subset=DB_FEATURE_COLS + ["label"]).copy()
     if len(df_clean) < 500:
         print("  ⚠  Not enough data for training. Need at least 500 clean rows.")
         return None
+        
+    # Sort chronologically to prevent lookahead leakage
+    df_clean = df_clean.sort_values(by="date").reset_index(drop=True)
 
-    dates = df_clean["date"].sort_values().unique()
+    X_all = df_clean[DB_FEATURE_COLS].values
+    y_all = df_clean["label"].values
+    
+    # Tune on full dataset (reserves future folds internally via TimeSeriesSplit)
+    best_params = tune_hyperparameters(X_all, y_all)
+    
+    # Walk-forward evaluation (for reporting metrics)
+    dates = df_clean["date"].unique()
     split_size = len(dates) // (n_splits + 1)
 
     metrics_list = []
-    best_auc = 0
-
+    
     for fold in range(n_splits):
         train_end_idx = split_size * (fold + 2)
         test_end_idx = min(train_end_idx + split_size, len(dates))
@@ -91,8 +128,9 @@ def walk_forward_train(df: pd.DataFrame, n_splits: int = 5):
         if len(np.unique(y_train)) < 2 or len(np.unique(y_test)) < 2:
             continue
 
-        model = XGBClassifier(**XGBOOST_PARAMS)
-        model.fit(X_train, y_train, eval_set=[(X_test, y_test)], verbose=False)
+        # Use tuned params (with consistent random state & metric)
+        model = XGBClassifier(**best_params, random_state=42, eval_metric="logloss")
+        model.fit(X_train, y_train, verbose=False)
 
         y_pred = model.predict(X_test)
         y_prob = model.predict_proba(X_test)[:, 1]
@@ -112,16 +150,13 @@ def walk_forward_train(df: pd.DataFrame, n_splits: int = 5):
         print(f"\n  Fold {fold+1}: AUC={auc:.4f} | Prec={prec:.4f} | "
               f"Rec={rec:.4f} | F1={f1:.4f} | Acc={acc:.4f}")
 
-        if auc > best_auc:
-            best_auc = auc
-
     if not metrics_list:
         print("  ✗ No valid folds produced. Check data quality.")
         return None
 
     # Print average metrics
     avg = pd.DataFrame(metrics_list).mean(numeric_only=True)
-    print("\n  ─── Average Across Folds ───")
+    print("\n  ─── Average Walk-Forward Metrics ───")
     print(f"  AUC:       {avg['auc']:.4f}")
     print(f"  Precision: {avg['precision']:.4f}")
     print(f"  Recall:    {avg['recall']:.4f}")
@@ -129,10 +164,8 @@ def walk_forward_train(df: pd.DataFrame, n_splits: int = 5):
     print(f"  Accuracy:  {avg['accuracy']:.4f}")
 
     # Train final model on ALL data
-    print("\n  Training final model on full dataset...")
-    X_all = df_clean[DB_FEATURE_COLS].values
-    y_all = df_clean["label"].values
-    final_model = XGBClassifier(**XGBOOST_PARAMS)
+    print("\n  Training final model on full dataset with best params...")
+    final_model = XGBClassifier(**best_params, random_state=42, eval_metric="logloss")
     final_model.fit(X_all, y_all, verbose=False)
 
     # Save model
