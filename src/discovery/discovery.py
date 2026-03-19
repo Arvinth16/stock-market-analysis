@@ -87,7 +87,7 @@ def scan_news_for_discoveries(max_queries: int = 8) -> list:
             # Check for bullish keywords
             has_bullish = any(kw in title.lower() for kw in BULLISH_KEYWORDS)
 
-            if not has_bullish and sent["score"] <= 0.05:
+            if not has_bullish and sent["compound"] <= 0.05:
                 continue
 
             # Extract potential symbols
@@ -106,7 +106,7 @@ def scan_news_for_discoveries(max_queries: int = 8) -> list:
                     }
 
                 discoveries[sym]["mentions"] += 1
-                discoveries[sym]["total_sentiment"] += sent["score"]
+                discoveries[sym]["total_sentiment"] += sent["compound"]
                 if has_bullish:
                     discoveries[sym]["bullish_count"] += 1
 
@@ -193,7 +193,8 @@ def onboard_stock(symbol: str) -> bool:
                 (symbol,),
             )
 
-        valid = features.dropna().shape[0]
+        core_cols = [c for c in features.columns if not c.startswith("fund_")]
+        valid = features.dropna(subset=core_cols).shape[0]
         print(f"✓ {valid} feature rows, {len(df)} days of history")
         return True
 
