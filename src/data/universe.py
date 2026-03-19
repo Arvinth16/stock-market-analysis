@@ -53,9 +53,20 @@ NIFTY_50 = {
     "HDFCLIFE.NS": {"name": "HDFC Life Insurance", "sector": "Insurance"},
     "TATACONSUM.NS": {"name": "Tata Consumer Products", "sector": "FMCG"},
     "BAJAJ-AUTO.NS": {"name": "Bajaj Auto", "sector": "Auto"},
-    "UPL.NS": {"name": "UPL Limited", "sector": "Chemicals"},
+    "UPL.NS": {"name": "UPL", "sector": "Chemicals"},
+    
+    # Custom Additions
+    "KARURVYSYA.NS": {"name": "Karur Vysya Bank", "sector": "Banking"},
+    "KAYNES.NS": {"name": "Kaynes Technology", "sector": "Electronics"},
+    "GOLDBEES.NS": {"name": "Nippon India ETF Gold BeES", "sector": "ETF"},
+    "NIFTYBEES.NS": {"name": "Nippon India ETF Nifty 50 BeES", "sector": "ETF"},
+    "CPSEETF.NS": {"name": "CPSE ETF", "sector": "ETF"},
+    "RVNL.NS": {"name": "Rail Vikas Nigam", "sector": "Infrastructure"},
+    "WAAREERTL.NS": {"name": "Waaree Renewable Technologies", "sector": "Renewables"},
+    "LLOYDSENT.NS": {"name": "Lloyds Enterprises", "sector": "Trading"},
+    "ADANIPOWER.NS": {"name": "Adani Power", "sector": "Power"},
+    "KPRMILL.NS": {"name": "KPR Mill", "sector": "Textiles"},
 }
-
 
 def get_universe() -> dict:
     """Return the full stock universe."""

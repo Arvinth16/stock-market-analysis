@@ -13,6 +13,7 @@ import argparse
 import sys
 from datetime import datetime
 from tabulate import tabulate
+import pandas as pd
 
 
 def cmd_update(args):
@@ -57,7 +58,8 @@ def cmd_news(args):
 
     for article, sent in zip(articles, sentiments):
         icon = "🟢" if sent["label"] == "positive" else "🔴" if sent["label"] == "negative" else "⚪"
-        print(f"  {icon} [{sent['compound']:+.3f}] {article['title']}")
+        pub_date = article.get("published_date", "Recent")[:16] # Truncate to YYYY-MM-DD HH:MM
+        print(f"  {icon} [{sent['compound']:+.2f}] {pub_date} | {article['title']}")
         print(f"     📅 {article.get('published_date', 'N/A')} | 📰 {article.get('source', 'N/A')}")
         print()
 
@@ -141,6 +143,198 @@ def cmd_pipeline(args):
     print("=" * 60)
 
 
+def cmd_analyze(args):
+    """Analyze a single stock in depth."""
+    from src.models.scorer import score_all_stocks
+    from src.news.fetcher import fetch_news
+    from src.news.sentiment import analyze_sentiment_batch, get_aggregate_sentiment
+    from src.data.universe import get_symbol_name
+    import yfinance as yf
+    import math
+
+    symbol = args.symbol.upper()
+    if not symbol.endswith(".NS"):
+        symbol += ".NS"
+
+    name = get_symbol_name(symbol)
+    if not name:
+        print(f"✗ Symbol {symbol} not in universe.")
+        return
+
+    print(f"\n🔍 Analyzing: {name} ({symbol})")
+    print("━" * 60)
+
+    # 1. Get Score & Target Price
+    df = score_all_stocks()
+    stock_data = df[df["symbol"] == symbol]
+
+    if stock_data.empty:
+        print("  ✗ No model data available for this stock yet. Run 'india-stock update' and 'train'.\n")
+        return
+
+    # 1.1 Market Regime Check
+    median_20d_momentum = df["momentum_20d"].median()
+    in_crash_regime = median_20d_momentum < -4.0
+    
+    if in_crash_regime:
+        print(f"\n  ⚠️  MARKET CRASH REGIME DETECTED (Universe Median 20-Day: {median_20d_momentum:.1f}%)")
+        print("  ⚠️  Model trained on normal conditions; treat forecasts as low-confidence, use only as baseline.\n")
+
+    row = stock_data.iloc[0]
+    
+    # 2. Extract Data
+    last_price = row.get("last_price", 0)
+    target_price = row.get("target_price", 0)
+    pred_return = row.get("predicted_return", 0) * 100
+    model_score = row.get("model_score", 0)
+    momentum = row.get("momentum_20d", 0)
+    rsi = row.get("rsi", 0)
+    final_score = row.get("final_score", 0)
+
+    # 3. Categorize Signal
+    if final_score > 0.65 and model_score > 0.60:
+        signal_tag = "🟩 STRONG BULLISH"
+    elif final_score > 0.55 and model_score > 0.50:
+        signal_tag = "🟨 MILD BULLISH"
+    elif final_score < 0.40 and model_score < 0.40:
+        signal_tag = "🟥 BEARISH"
+    else:
+        signal_tag = "⬜ NEUTRAL"
+
+    # 4. Volatility Context
+    vol = row.get("volatility_20", 0)
+    if isinstance(vol, pd.Series): vol = float(vol.iloc[0]) if not vol.empty else 0.0
+    daily_move = (vol / math.sqrt(252)) * 100 if vol > 0 else 0.0
+
+    # 5. Print Dashboard
+    print(f"📊 Model Analysis (Date: {row['date']})")
+    print(f"  Current Price:    ₹{last_price:.2f}")
+    print(f"  Signal Strength:  {signal_tag}")
+    print(f"  Target Price:     ₹{target_price:.2f} ({pred_return:+.2f}%)  <-- XGBRegressor 20-Day Forecast")
+    print(f"  Upside Prob:      {model_score*100:.1f}%              <-- XGBClassifier Probability")
+    print(f"  RSI (14-day):     {rsi:.1f}")
+    print(f"  Momentum (20d):   {momentum:+.1f}%")
+    print(f"  Volatility (20d): {vol*100:.1f}% Annualized (Typical daily move: ±{daily_move:.1f}%)")
+    print(f"  Ranker Score:     {final_score:.4f}/1.000")
+
+    # 6. External Analyst Targets
+    print("\n🎯 External Price Targets (Street Consensus)")
+    ticker = yf.Ticker(symbol)
+    info = ticker.info
+    mean_tgt = info.get("targetMeanPrice")
+    high_tgt = info.get("targetHighPrice")
+    low_tgt = info.get("targetLowPrice")
+    analysts = info.get("numberOfAnalystOpinions", 0)
+    
+    if mean_tgt and last_price > 0:
+        upside = ((mean_tgt - last_price) / last_price) * 100
+        print(f"  - Consensus Mean: ₹{mean_tgt:.2f} ({upside:+.1f}% vs Current)")
+        print(f"  - Target Range:   ₹{low_tgt:.2f} (Low) - ₹{high_tgt:.2f} (High)")
+        print(f"  - Analyst Count:  {analysts} Brokers")
+    else:
+        print("  - No consensus targets available for this stock.")
+
+    print("\n📰 Recent News Sentiment")
+    
+    articles = fetch_news(name, max_results=5)
+    if not articles:
+        print("  No recent news found.")
+    else:
+        sentiments = analyze_sentiment_batch([a["title"] for a in articles])
+        agg = get_aggregate_sentiment(sentiments)
+        avg_score = agg["avg_compound"]
+        ov_label = agg["overall_label"].upper()
+        main_icon = "🟢" if "POS" in ov_label else "🔴" if "NEG" in ov_label else "⚪"
+        print(f"  Overall: {ov_label} {main_icon} (avg: {avg_score:+.3f})")
+        for article, sent in zip(articles, sentiments):
+            icon = "🟢" if sent["label"] == "positive" else "🔴" if sent["label"] == "negative" else "⚪"
+            pub_date = article.get("published_date", "Recent")[:16]
+            print(f"    {icon} [{sent['compound']:+.2f}] {pub_date} | {article['title']}")
+            
+    print("\n" + "=" * 60 + "\n")
+
+
+def cmd_portfolio(args):
+    """Analyze a predefined list of portfolio stocks."""
+    from src.models.scorer import score_all_stocks
+
+    PORTFOLIO = [
+        "KARURVYSYA.NS", "GOLDBEES.NS", "NIFTYBEES.NS", "CPSEETF.NS", "KAYNES.NS", 
+        "RVNL.NS", "WAAREERTL.NS", "LLOYDSENT.NS", "ADANIPOWER.NS", "KPRMILL.NS", 
+        "ITC.NS", "ADANIENT.NS"
+    ]
+
+    print("\n💼 PORTFOLIO TRACKER — India Stock Research Agent")
+    print("=" * 70)
+
+    try:
+        df = score_all_stocks()
+    except Exception as e:
+        print("  ✗ Error loading model data. Run 'india-stock train' first.")
+        return
+
+    if df.empty:
+        print("  ✗ No data available. Run: india-stock update\n")
+        return
+        
+    median_20d_momentum = df["momentum_20d"].median()
+    in_crash_regime = median_20d_momentum < -4.0
+    
+    if in_crash_regime:
+        print(f"  ⚠️  MARKET CRASH REGIME DETECTED (Universe Median 20-Day: {median_20d_momentum:.1f}%)")
+        print("  ⚠️  Bullish predictions are severely down-weighted for safety.\n")
+        df['predicted_return'] = df['predicted_return'].apply(lambda x: x * 0.4 if x > 0 else x * 1.2)
+        df['target_price'] = df['last_price'] * (1 + df['predicted_return'])
+
+    portfolio_df = df[df["symbol"].isin(PORTFOLIO)]
+    
+    table_data = []
+    for i, (_, row) in enumerate(portfolio_df.iterrows(), 1):
+        target_pct = row['predicted_return'] * 100
+        signal_prob = row['model_score'] * 100
+        
+        # Volatility warning
+        vol_warn = "🚨" if row['volatility_20'] > 0.40 else ""
+        
+        table_data.append([
+            row["symbol"].replace('.NS', ''),
+            f"₹{row['last_price']:.2f}",
+            f"₹{row['target_price']:.2f} ({target_pct:+.1f}%)",
+            f"{signal_prob:.1f}%",
+            f"{row['momentum_20d']:+.1f}%",
+            f"{row['rsi']:.0f} {vol_warn}"
+        ])
+
+    headers = ["Symbol", "CMP", "AI Target (20d)", "Bull Prob", "Mom(20d)", "RSI"]
+    from tabulate import tabulate
+    print(tabulate(table_data, headers=headers, tablefmt="rounded_grid"))
+    print("=" * 70 + "\n")
+    
+    print("📰 LATEST PORTFOLIO NEWS")
+    print("━" * 70)
+    
+    from src.news.fetcher import fetch_news
+    from src.news.sentiment import analyze_sentiment_batch
+    from src.data.universe import get_symbol_name
+    
+    for symbol in PORTFOLIO:
+        name = get_symbol_name(symbol)
+        articles = fetch_news(name, max_results=10)
+        if articles:
+            print(f"🔹 {symbol.replace('.NS', '')}")
+            sentiments = analyze_sentiment_batch([a["title"] for a in articles])
+            for article, sent in zip(articles, sentiments):
+                icon = "🟢" if sent["label"] == "positive" else "🔴" if sent["label"] == "negative" else "⚪"
+                pub_date = article.get("published_date", "Recent")[:10]
+                print(f"    {icon} [{pub_date}] {article['title']}")
+            print()
+    
+    print("=" * 70 + "\n")
+
+
+
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="india-stock",
@@ -163,6 +357,13 @@ def main():
     sub_rank.add_argument("--top", type=int, default=10, help="Number of top stocks (default: 10)")
     sub_rank.add_argument("--sector", type=str, default="", help="Filter by sector")
 
+    # portfolio
+    subparsers.add_parser("portfolio", help="Track and predict your custom 12-stock holding portfolio")
+
+    # analyze
+    sub_analyze = subparsers.add_parser("analyze", help="Detailed single-stock dashboard")
+    sub_analyze.add_argument("symbol", type=str, help="Stock symbol (e.g., ITC or ITC.NS)")
+
     # pipeline
     subparsers.add_parser("pipeline", help="Run full pipeline end-to-end")
 
@@ -177,6 +378,8 @@ def main():
         "train": cmd_train,
         "news": cmd_news,
         "rank": cmd_rank,
+        "portfolio": cmd_portfolio,
+        "analyze": cmd_analyze,
         "pipeline": cmd_pipeline,
     }
 

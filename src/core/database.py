@@ -66,6 +66,7 @@ def init_db():
                 return_10d REAL,
                 return_20d REAL,
                 label      INTEGER,
+                label_reg  REAL,
                 PRIMARY KEY (symbol, date)
             );
 

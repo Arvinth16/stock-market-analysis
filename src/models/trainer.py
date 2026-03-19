@@ -8,7 +8,7 @@ import os
 import numpy as np
 import pandas as pd
 import joblib
-from xgboost import XGBClassifier
+from xgboost import XGBClassifier, XGBRegressor
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score, roc_auc_score,
 )
@@ -27,9 +27,9 @@ def load_training_data() -> pd.DataFrame:
                       price_vs_sma20, price_vs_sma50, price_vs_sma200,
                       rsi_14, macd_norm, macd_signal_norm, macd_hist_norm,
                       bb_width, atr_percent, volatility_20, volume_ratio,
-                      dist_52w_high, dist_52w_low, return_5d, return_10d, return_20d, label
+                      dist_52w_high, dist_52w_low, return_5d, return_10d, return_20d, label, label_reg
                FROM features
-               WHERE label IS NOT NULL
+               WHERE label IS NOT NULL AND label_reg IS NOT NULL
                ORDER BY date""",
             conn, parse_dates=["date"],
         )
@@ -78,6 +78,33 @@ def tune_hyperparameters(X, y):
     return search.best_params_
 
 
+def tune_hyperparameters_regressor(X, y):
+    """Tune XGBoost Regressor hyperparameters."""
+    print("  Searching for best regressor hyperparameters...")
+    param_dist = {
+        "n_estimators": randint(100, 500),
+        "max_depth": randint(3, 8),
+        "learning_rate": uniform(0.01, 0.2),
+        "subsample": uniform(0.6, 0.4),
+        "colsample_bytree": uniform(0.6, 0.4),
+        "reg_alpha": uniform(0, 2),
+        "reg_lambda": uniform(1, 4),
+    }
+
+    base_model = XGBRegressor(random_state=42)
+    tscv = TimeSeriesSplit(n_splits=3)
+    
+    search = RandomizedSearchCV(
+        base_model, param_distributions=param_dist,
+        n_iter=15, scoring="neg_mean_squared_error", cv=tscv, 
+        random_state=42, n_jobs=-1, verbose=0
+    )
+    
+    search.fit(X, y)
+    print(f"  Best CV MSE: {-search.best_score_:.4f}")
+    return search.best_params_
+
+
 def walk_forward_train(df: pd.DataFrame, n_splits: int = 5):
     """
     Walk-forward cross-validation with hyperparameter tuning.
@@ -97,9 +124,11 @@ def walk_forward_train(df: pd.DataFrame, n_splits: int = 5):
 
     X_all = df_clean[DB_FEATURE_COLS].values
     y_all = df_clean["label"].values
+    y_reg_all = df_clean["label_reg"].values
     
     # Tune on full dataset (reserves future folds internally via TimeSeriesSplit)
     best_params = tune_hyperparameters(X_all, y_all)
+    best_params_reg = tune_hyperparameters_regressor(X_all, y_reg_all)
     
     # Walk-forward evaluation (for reporting metrics)
     dates = df_clean["date"].unique()
@@ -168,10 +197,16 @@ def walk_forward_train(df: pd.DataFrame, n_splits: int = 5):
     final_model = XGBClassifier(**best_params, random_state=42, eval_metric="logloss")
     final_model.fit(X_all, y_all, verbose=False)
 
-    # Save model
+    print("  Training final REGRESSOR on full dataset with best params...")
+    final_regressor = XGBRegressor(**best_params_reg, random_state=42)
+    final_regressor.fit(X_all, y_reg_all, verbose=False)
+
+    # Save models
     model_path = os.path.join(MODEL_DIR, "xgb_model.joblib")
+    regressor_path = os.path.join(MODEL_DIR, "xgb_regressor.joblib")
     joblib.dump(final_model, model_path)
-    print(f"  ✅ Model saved to {model_path}\n")
+    joblib.dump(final_regressor, regressor_path)
+    print(f"  ✅ Models saved to {MODEL_DIR}\n")
 
     # Save feature importance
     importances = pd.DataFrame({

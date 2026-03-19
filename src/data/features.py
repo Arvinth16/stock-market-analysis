@@ -134,26 +134,36 @@ def compute_labels(df: pd.DataFrame, horizon: int = PREDICTION_HORIZON,
     """
     forward_return = df["close"].pct_change(horizon).shift(-horizon)
     label = (forward_return > threshold).astype(int)
-    return label
+    label_reg = forward_return  # The exact continuous forward return
+    
+    return pd.DataFrame({
+        "label": label,
+        "label_reg": label_reg
+    })
 
 
-def store_features(symbol: str, features_df: pd.DataFrame, labels: pd.Series):
+def store_features(symbol: str, features_df: pd.DataFrame, labels_df: pd.DataFrame):
     """Store computed features and labels to the database."""
     if features_df.empty:
         return
     with get_db() as conn:
         for date in features_df.index:
             row = features_df.loc[date]
-            lbl = labels.get(date, None)
+            
+            lbl = labels_df.loc[date, "label"] if date in labels_df.index else None
             lbl_val = int(lbl) if pd.notna(lbl) else None
+            
+            lbl_reg = labels_df.loc[date, "label_reg"] if date in labels_df.index else None
+            lbl_reg_val = float(lbl_reg) if pd.notna(lbl_reg) else None
+
             conn.execute(
                 """INSERT OR REPLACE INTO features
                    (symbol, date, close_zscore_20, close_zscore_50,
                     price_vs_sma20, price_vs_sma50, price_vs_sma200,
                     rsi_14, macd_norm, macd_signal_norm, macd_hist_norm,
                     bb_width, atr_percent, volatility_20, volume_ratio,
-                    dist_52w_high, dist_52w_low, return_5d, return_10d, return_20d, label)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    dist_52w_high, dist_52w_low, return_5d, return_10d, return_20d, label, label_reg)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (symbol, date.strftime("%Y-%m-%d"),
                  _safe(row, "close_zscore_20"), _safe(row, "close_zscore_50"),
                  _safe(row, "price_vs_sma20"), _safe(row, "price_vs_sma50"), _safe(row, "price_vs_sma200"),
@@ -162,7 +172,7 @@ def store_features(symbol: str, features_df: pd.DataFrame, labels: pd.Series):
                  _safe(row, "volatility_20"), _safe(row, "volume_ratio"),
                  _safe(row, "dist_52w_high"), _safe(row, "dist_52w_low"),
                  _safe(row, "return_5d"), _safe(row, "return_10d"), _safe(row, "return_20d"),
-                 lbl_val),
+                 lbl_val, lbl_reg_val),
             )
 
 

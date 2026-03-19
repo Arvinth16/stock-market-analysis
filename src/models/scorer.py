@@ -21,6 +21,14 @@ def load_model():
     return joblib.load(model_path)
 
 
+def load_regressor():
+    """Load the saved XGBoost regressor model."""
+    model_path = os.path.join(MODEL_DIR, "xgb_regressor.joblib")
+    if not os.path.exists(model_path):
+        raise FileNotFoundError(f"No regressor found at {model_path}. Run trainer first.")
+    return joblib.load(model_path)
+
+
 def get_latest_features(symbol: str) -> dict | None:
     """Get the most recent feature row for a symbol from the DB."""
     with get_db() as conn:
@@ -50,14 +58,11 @@ def get_latest_sentiment(symbol: str) -> float:
 def score_all_stocks() -> pd.DataFrame:
     """
     Score all stocks in the universe and return a ranked DataFrame.
-
-    Combines:
-    - Model probability (XGBoost)
-    - News sentiment score
-    - Recent momentum (20-day return)
     """
     model = load_model()
+    regressor = load_regressor()
     symbols = get_symbols()
+
     results = []
 
     for symbol in symbols:
@@ -81,6 +86,7 @@ def score_all_stocks() -> pd.DataFrame:
         # Model prediction
         X = np.array([feature_vals])
         prob = model.predict_proba(X)[0][1]  # Probability of positive class
+        pred_return = regressor.predict(X)[0] # Predicted percentage return
 
         # Sentiment
         sentiment = get_latest_sentiment(symbol)
@@ -94,16 +100,30 @@ def score_all_stocks() -> pd.DataFrame:
             WEIGHT_SENTIMENT * ((sentiment + 1) / 2) +  # normalize -1..1 to 0..1
             WEIGHT_MOMENTUM * max(0, min(1, momentum + 0.5))  # rough normalization
         )
+        
+        # Get latest price to calculate target
+        with get_db() as conn:
+            last_price_row = conn.execute(
+                "SELECT close FROM ohlcv WHERE symbol = ? ORDER BY date DESC LIMIT 1",
+                (symbol,)
+            ).fetchone()
+            
+        last_price = float(last_price_row["close"]) if last_price_row else 0.0
+        target_price = last_price * (1 + pred_return)
 
         results.append({
             "symbol": symbol,
             "name": get_symbol_name(symbol),
             "sector": get_symbol_sector(symbol),
             "model_score": round(prob, 4),
+            "predicted_return": round(float(pred_return), 4),
+            "target_price": round(target_price, 2),
+            "last_price": round(last_price, 2),
             "sentiment": round(sentiment, 4),
             "momentum_20d": round(float(momentum) * 100, 2),
             "final_score": round(final_score, 4),
             "rsi": round(float(feat.get("rsi_14", 0) or 0), 2),
+            "volatility_20": round(float(feat.get("volatility_20", 0) or 0), 4),
             "date": feat.get("date", ""),
         })
 
