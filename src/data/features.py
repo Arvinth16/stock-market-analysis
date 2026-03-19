@@ -395,7 +395,10 @@ def compute_and_store_all():
         )
         labels = compute_labels(df)
         store_features(symbol, features, labels)
-        valid = features.dropna().shape[0]
+        
+        core_cols = [c for c in features.columns if not c.startswith("fund_")]
+        valid = features.dropna(subset=core_cols).shape[0]
+        
         print(f"✓ {valid} feature rows")
         success += 1
 
