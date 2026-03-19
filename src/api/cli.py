@@ -95,22 +95,33 @@ def cmd_rank(args):
     # Format table
     table_data = []
     for i, (_, row) in enumerate(top.iterrows(), 1):
+        ci = f"[{row.get('pred_return_low', 0)*100:+.1f}%, {row.get('pred_return_high', 0)*100:+.1f}%]"
         table_data.append([
             i,
             row["name"],
-            row["symbol"],
             row["sector"],
             f"{row['final_score']:.4f}",
+            f"{row.get('predicted_return', 0)*100:+.1f}%",
+            ci,
             f"{row['model_score']:.3f}",
             f"{row['sentiment']:+.3f}",
             f"{row['momentum_20d']:+.1f}%",
-            f"{row['rsi']:.0f}",
         ])
 
-    headers = ["#", "Stock", "Symbol", "Sector", "Score", "Model", "Sentiment", "Mom(20d)", "RSI"]
+    # Regime banner
+    regime = top.iloc[0].get("regime", "normal") if not top.empty else "normal"
+    if regime == "crash":
+        print("  🚨🚨🚨 MARKET REGIME: CRASH — All bullish forecasts are heavily suppressed! 🚨🚨🚨")
+    elif regime == "stressed":
+        print("  ⚠️  MARKET REGIME: STRESSED — Bullish signals dampened for safety.")
+    else:
+        print("  ✅ MARKET REGIME: NORMAL")
+    print()
+
+    headers = ["#", "Stock", "Sector", "Score", "Return", "80% CI", "Model", "Sent", "Mom"]
     print(tabulate(table_data, headers=headers, tablefmt="rounded_grid"))
 
-    print("\n  ⚠️  DISCLAIMER: These are research signals only, NOT investment advice.")
+    print("\n  ⚠️  DISCLAIMER: Research signals only, NOT investment advice.")
     print("  Always do your own research and consult a financial advisor.\n")
 
 
@@ -434,6 +445,15 @@ def main():
     # pipeline
     subparsers.add_parser("pipeline", help="Run full pipeline end-to-end")
 
+    # discover
+    subparsers.add_parser("discover", help="Discover new stocks from news")
+
+    # monitor
+    subparsers.add_parser("monitor", help="Run data quality & model health checks")
+
+    # schedule
+    subparsers.add_parser("schedule", help="Start automated daily/weekly scheduler")
+
     if len(sys.argv) == 1:
         parser.print_help()
         return
@@ -448,6 +468,9 @@ def main():
         "portfolio": cmd_portfolio,
         "analyze": cmd_analyze,
         "pipeline": cmd_pipeline,
+        "discover": cmd_discover,
+        "monitor": cmd_monitor,
+        "schedule": cmd_schedule,
     }
 
     func = commands.get(args.command)
@@ -455,6 +478,24 @@ def main():
         func(args)
     else:
         parser.print_help()
+
+
+def cmd_discover(args):
+    """Run news-driven stock discovery."""
+    from src.discovery.discovery import run_discovery
+    run_discovery()
+
+
+def cmd_monitor(args):
+    """Run data quality and model health checks."""
+    from src.core.monitor import run_monitor
+    run_monitor()
+
+
+def cmd_schedule(args):
+    """Start the automated scheduler."""
+    from src.core.scheduler import start_scheduler
+    start_scheduler()
 
 
 if __name__ == "__main__":

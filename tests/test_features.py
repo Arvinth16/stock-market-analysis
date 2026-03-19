@@ -19,5 +19,28 @@ def test_features():
     for c in ["price_vs_sma20","rsi_14","macd_norm"]:
         assert c in compute_features(_df()).columns
 
+def test_v2_cross_sectional_features():
+    feats = compute_features(_df())
+    for c in ["volume_zscore", "return_60d", "vol_adjusted_return"]:
+        assert c in feats.columns
+
+def test_v2_fundamental_features():
+    feats = compute_features(_df())
+    for c in ["fund_pe", "fund_pb", "fund_roe"]:
+        assert c in feats.columns
+
 def test_labels():
     assert set(compute_labels(_df())["label"].dropna().unique()).issubset({0,1})
+
+def test_labels_multi_horizon():
+    labels = compute_labels(_df())
+    assert "label_60d" in labels.columns
+    assert "label_vol_scaled" in labels.columns
+    assert "label_bucket" in labels.columns
+    valid_buckets = set(labels["label_bucket"].dropna().unique())
+    assert valid_buckets.issubset({0, 1, 2})
+
+def test_feature_count():
+    from src.data.features import FEATURE_COLUMNS
+    assert len(FEATURE_COLUMNS) == 34
+

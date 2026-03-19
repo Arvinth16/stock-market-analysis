@@ -128,10 +128,16 @@ def fetch_and_store_macro():
             
     return success
 
+
+def fetch_and_store_ohlcv(symbol: str) -> bool:
+    """Fetch and store OHLCV for a single stock (used by discovery onboarding)."""
+    df = fetch_ohlcv(symbol)
+    if not df.empty:
+        store_ohlcv(symbol, df)
+        return True
+    return False
+
+
 if __name__ == "__main__":
     fetch_and_store_macro()
-    fetch_and_store_all()
-
-
-if __name__ == "__main__":
     fetch_and_store_all()
