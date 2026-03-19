@@ -16,6 +16,8 @@ venv/
 # Secrets
 .env
 *.env.local
+my_portfolio.json
+
 # Data & Models (local only)
 data/*.db
 data/*.sqlite

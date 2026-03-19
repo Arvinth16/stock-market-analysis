@@ -287,12 +287,19 @@ def cmd_analyze(args):
 
 def cmd_portfolio(args):
     """Analyze a predefined list of portfolio stocks."""
+    import os
+    import json
     from src.models.scorer import score_all_stocks
-
-    # Replace with your own portfolio symbols
-    PORTFOLIO = [
-        "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS"
-    ]
+    
+    # Check for local private portfolio config
+    if os.path.exists("my_portfolio.json"):
+        with open("my_portfolio.json", "r") as f:
+            PORTFOLIO = json.load(f)
+    else:
+        # Generic public placeholder for Github
+        PORTFOLIO = [
+            "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS"
+        ]
 
     print("\n💼 PORTFOLIO TRACKER — India Stock Research Agent")
     print("=" * 70)
