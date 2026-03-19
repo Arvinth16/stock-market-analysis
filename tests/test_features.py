@@ -20,4 +20,4 @@ def test_features():
         assert c in compute_features(_df()).columns
 
 def test_labels():
-    assert set(compute_labels(_df()).dropna().unique()).issubset({0,1})
+    assert set(compute_labels(_df())["label"].dropna().unique()).issubset({0,1})
