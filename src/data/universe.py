@@ -68,6 +68,11 @@ NIFTY_50 = {
     "KPRMILL.NS": {"name": "KPR Mill", "sector": "Textiles"},
 }
 
+MACRO_SYMBOLS = {
+    "^NSEI": {"name": "NIFTY 50", "sector": "Index"},
+    "^INDIAVIX": {"name": "India VIX", "sector": "Volatility"},
+}
+
 def get_universe() -> dict:
     """Return the full stock universe."""
     return NIFTY_50

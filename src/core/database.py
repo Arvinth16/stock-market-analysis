@@ -43,6 +43,29 @@ def init_db():
                 volume    INTEGER,
                 PRIMARY KEY (symbol, date)
             );
+            
+            CREATE TABLE IF NOT EXISTS macro_data (
+                symbol    TEXT NOT NULL,
+                date      TEXT NOT NULL,
+                close     REAL,
+                PRIMARY KEY (symbol, date)
+            );
+            
+            CREATE TABLE IF NOT EXISTS fundamentals (
+                symbol    TEXT NOT NULL,
+                latest_date TEXT NOT NULL,
+                pe_ratio  REAL,
+                forward_pe REAL,
+                pb_ratio  REAL,
+                roe       REAL,
+                roa       REAL,
+                debt_to_equity REAL,
+                revenue_growth REAL,
+                earnings_growth REAL,
+                profit_margin REAL,
+                dividend_yield REAL,
+                PRIMARY KEY (symbol)
+            );
 
             CREATE TABLE IF NOT EXISTS features (
                 symbol    TEXT NOT NULL,
@@ -65,6 +88,8 @@ def init_db():
                 return_5d  REAL,
                 return_10d REAL,
                 return_20d REAL,
+                macro_nifty_drawdown REAL,
+                macro_vix_percentile REAL,
                 label      INTEGER,
                 label_reg  REAL,
                 PRIMARY KEY (symbol, date)

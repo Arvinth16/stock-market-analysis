@@ -149,6 +149,7 @@ def cmd_analyze(args):
     from src.news.fetcher import fetch_news
     from src.news.sentiment import analyze_sentiment_batch, get_aggregate_sentiment
     from src.data.universe import get_symbol_name
+    from src.core.database import get_db
     import yfinance as yf
     import math
 
@@ -207,6 +208,9 @@ def cmd_analyze(args):
     daily_move = (vol / math.sqrt(252)) * 100 if vol > 0 else 0.0
 
     # 5. Print Dashboard
+    macro_nifty = row.get("macro_nifty_drawdown", 0)
+    macro_vix = row.get("macro_vix_percentile", 0)
+    
     print(f"📊 Model Analysis (Date: {row['date']})")
     print(f"  Current Price:    ₹{last_price:.2f}")
     print(f"  Signal Strength:  {signal_tag}")
@@ -215,7 +219,34 @@ def cmd_analyze(args):
     print(f"  RSI (14-day):     {rsi:.1f}")
     print(f"  Momentum (20d):   {momentum:+.1f}%")
     print(f"  Volatility (20d): {vol*100:.1f}% Annualized (Typical daily move: ±{daily_move:.1f}%)")
+    print(f"  Macro Context:    Nifty Drawdown: {macro_nifty:.1f}% | VIX Percentile: {macro_vix:.1f}%")
     print(f"  Ranker Score:     {final_score:.4f}/1.000")
+
+    # 5.5 Fundamentals Layer
+    with get_db() as conn:
+        fund = conn.execute("SELECT * FROM fundamentals WHERE symbol = ?", (symbol,)).fetchone()
+    
+    if fund:
+        pe = fund["pe_ratio"] or 0
+        fpe = fund["forward_pe"] or 0
+        roe = (fund["roe"] or 0) * 100
+        debt = fund["debt_to_equity"] or 0
+        print("\n💼 Core Fundamentals")
+        print(f"  - Trailing P/E:   {pe:.1f}x")
+        print(f"  - Forward P/E:    {fpe:.1f}x")
+        print(f"  - Return on Eq:   {roe:.1f}%")
+        print(f"  - Debt/Equity:    {debt:.2f}")
+
+    # 5.6 SHAP AI Explainability
+    shap_bull = row.get("shap_bullish", [])
+    shap_bear = row.get("shap_bearish", [])
+    
+    if shap_bull or shap_bear:
+        print("\n🧠 AI Explainability (Top SHAP Drivers)")
+        for f in shap_bull:
+            print(f"  🟢 {f['feature']:<20} (+{f['impact']:.3f} impact)")
+        for f in shap_bear:
+            print(f"  🔴 {f['feature']:<20} ({f['impact']:.3f} impact)")
 
     # 6. External Analyst Targets
     print("\n🎯 External Price Targets (Street Consensus)")
@@ -258,10 +289,9 @@ def cmd_portfolio(args):
     """Analyze a predefined list of portfolio stocks."""
     from src.models.scorer import score_all_stocks
 
+    # Replace with your own portfolio symbols
     PORTFOLIO = [
-        "KARURVYSYA.NS", "GOLDBEES.NS", "NIFTYBEES.NS", "CPSEETF.NS", "KAYNES.NS", 
-        "RVNL.NS", "WAAREERTL.NS", "LLOYDSENT.NS", "ADANIPOWER.NS", "KPRMILL.NS", 
-        "ITC.NS", "ADANIENT.NS"
+        "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS"
     ]
 
     print("\n💼 PORTFOLIO TRACKER — India Stock Research Agent")
@@ -288,6 +318,27 @@ def cmd_portfolio(args):
 
     portfolio_df = df[df["symbol"].isin(PORTFOLIO)]
     
+    # Sector Exposure Calculation
+    from src.data.universe import get_symbol_sector
+    sector_weights = {}
+    for sym in PORTFOLIO:
+        sec = get_symbol_sector(sym)
+        sector_weights[sec] = sector_weights.get(sec, 0) + 1
+        
+    print("  📊 Portfolio Sector Exposure (Equal-Weight Assumption):")
+    total_assets = len(PORTFOLIO)
+    for sec, count in sorted(sector_weights.items(), key=lambda x: x[1], reverse=True):
+        weight_pct = (count / total_assets) * 100
+        bar = "█" * int(weight_pct / 5)
+        print(f"    {sec:<16} {bar} {weight_pct:.1f}%")
+    print()
+    
+    fund_dict = {}
+    from src.core.database import get_db
+    with get_db() as conn:
+        for fund_row in conn.execute("SELECT symbol, pe_ratio, roe FROM fundamentals"):
+            fund_dict[fund_row["symbol"]] = {"pe": fund_row["pe_ratio"], "roe": fund_row["roe"]}
+    
     table_data = []
     for i, (_, row) in enumerate(portfolio_df.iterrows(), 1):
         target_pct = row['predicted_return'] * 100
@@ -296,16 +347,24 @@ def cmd_portfolio(args):
         # Volatility warning
         vol_warn = "🚨" if row['volatility_20'] > 0.40 else ""
         
+        sym = row["symbol"]
+        pe = fund_dict.get(sym, {}).get("pe")
+        roe = fund_dict.get(sym, {}).get("roe")
+        pe_str = f"{pe:.1f}" if pe else "-"
+        roe_str = f"{roe*100:.1f}%" if roe else "-"
+        
         table_data.append([
-            row["symbol"].replace('.NS', ''),
+            sym.replace('.NS', ''),
             f"₹{row['last_price']:.2f}",
             f"₹{row['target_price']:.2f} ({target_pct:+.1f}%)",
             f"{signal_prob:.1f}%",
             f"{row['momentum_20d']:+.1f}%",
-            f"{row['rsi']:.0f} {vol_warn}"
+            f"{row['rsi']:.0f} {vol_warn}",
+            pe_str,
+            roe_str
         ])
 
-    headers = ["Symbol", "CMP", "AI Target (20d)", "Bull Prob", "Mom(20d)", "RSI"]
+    headers = ["Symbol", "CMP", "AI Target (20d)", "Bull Prob", "Mom(20d)", "RSI", "P/E", "ROE"]
     from tabulate import tabulate
     print(tabulate(table_data, headers=headers, tablefmt="rounded_grid"))
     print("=" * 70 + "\n")

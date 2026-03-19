@@ -58,12 +58,13 @@ def compute_atr(high: pd.Series, low: pd.Series, close: pd.Series, period: int =
     return tr.rolling(window=period).mean()
 
 
-def compute_features(df: pd.DataFrame) -> pd.DataFrame:
+def compute_features(df: pd.DataFrame, macro_df: pd.DataFrame = None) -> pd.DataFrame:
     """
     Compute all technical indicators from OHLCV data.
 
     Args:
         df: DataFrame with columns [open, high, low, close, volume], indexed by date.
+        macro_df: DataFrame with macro index data to join on date.
 
     Returns:
         DataFrame with computed feature columns, indexed by date.
@@ -121,6 +122,20 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     features["return_10d"] = close.pct_change(10)
     features["return_20d"] = close.pct_change(20)
 
+    # ─── Macro & Regime ──────────────────────────────────────────────
+    if macro_df is not None and not macro_df.empty:
+        macro = macro_df.reindex(df.index).ffill()
+        nifty_high = macro['nifty_close'].rolling(252, min_periods=20).max()
+        features['macro_nifty_drawdown'] = ((macro['nifty_close'] - nifty_high) / nifty_high.replace(0, np.nan)) * 100
+        
+        vix_min = macro['vix_close'].rolling(252, min_periods=20).min()
+        vix_max = macro['vix_close'].rolling(252, min_periods=20).max()
+        vix_range = (vix_max - vix_min).replace(0, np.nan)
+        features['macro_vix_percentile'] = ((macro['vix_close'] - vix_min) / vix_range) * 100
+    else:
+        features['macro_nifty_drawdown'] = 0.0
+        features['macro_vix_percentile'] = 50.0
+
     return features
 
 
@@ -162,8 +177,9 @@ def store_features(symbol: str, features_df: pd.DataFrame, labels_df: pd.DataFra
                     price_vs_sma20, price_vs_sma50, price_vs_sma200,
                     rsi_14, macd_norm, macd_signal_norm, macd_hist_norm,
                     bb_width, atr_percent, volatility_20, volume_ratio,
-                    dist_52w_high, dist_52w_low, return_5d, return_10d, return_20d, label, label_reg)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    dist_52w_high, dist_52w_low, return_5d, return_10d, return_20d, 
+                    macro_nifty_drawdown, macro_vix_percentile, label, label_reg)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (symbol, date.strftime("%Y-%m-%d"),
                  _safe(row, "close_zscore_20"), _safe(row, "close_zscore_50"),
                  _safe(row, "price_vs_sma20"), _safe(row, "price_vs_sma50"), _safe(row, "price_vs_sma200"),
@@ -172,6 +188,7 @@ def store_features(symbol: str, features_df: pd.DataFrame, labels_df: pd.DataFra
                  _safe(row, "volatility_20"), _safe(row, "volume_ratio"),
                  _safe(row, "dist_52w_high"), _safe(row, "dist_52w_low"),
                  _safe(row, "return_5d"), _safe(row, "return_10d"), _safe(row, "return_20d"),
+                 _safe(row, "macro_nifty_drawdown"), _safe(row, "macro_vix_percentile"),
                  lbl_val, lbl_reg_val),
             )
 
@@ -191,14 +208,25 @@ FEATURE_COLUMNS = [
     "bb_width", "atr_percent", "volatility_20", "volume_ratio",
     "dist_52w_high", "dist_52w_low",
     "return_5d", "return_10d", "return_20d",
+    "macro_nifty_drawdown", "macro_vix_percentile"
 ]
 
-
+def load_macro_data() -> pd.DataFrame:
+    with get_db() as conn:
+        try:
+            nifty = pd.read_sql_query("SELECT date, close as nifty_close FROM macro_data WHERE symbol='^NSEI'", conn, parse_dates=["date"], index_col="date")
+            vix = pd.read_sql_query("SELECT date, close as vix_close FROM macro_data WHERE symbol='^INDIAVIX'", conn, parse_dates=["date"], index_col="date")
+            return nifty.join(vix, how="outer")
+        except Exception:
+            return pd.DataFrame()
 
 def compute_and_store_all():
     """Compute features and labels for all stocks and store in DB."""
+    from src.core.database import init_db
+    init_db()
     symbols = get_symbols()
     total = len(symbols)
+    macro_df = load_macro_data()
 
     print("━" * 60)
     print("🔧 COMPUTING TECHNICAL FEATURES")
@@ -212,7 +240,7 @@ def compute_and_store_all():
             print("✗ insufficient data")
             continue
 
-        features = compute_features(df)
+        features = compute_features(df, macro_df)
         labels = compute_labels(df)
         store_features(symbol, features, labels)
         valid = features.dropna().shape[0]

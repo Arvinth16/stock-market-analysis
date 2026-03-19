@@ -111,6 +111,17 @@ def score_all_stocks() -> pd.DataFrame:
         last_price = float(last_price_row["close"]) if last_price_row else 0.0
         target_price = last_price * (1 + pred_return)
 
+        # SHAP Explainability (Why does the AI think this?)
+        import shap
+        explainer = shap.TreeExplainer(model)
+        shap_vals = explainer.shap_values(X)[0]
+        
+        contributions = list(zip(DB_FEATURE_COLS, shap_vals))
+        sorted_contribs = sorted(contributions, key=lambda x: x[1], reverse=True)
+        
+        top_bullish = [{"feature": f, "impact": v} for f, v in sorted_contribs if v > 0][:3]
+        top_bearish = [{"feature": f, "impact": v} for f, v in reversed(sorted_contribs) if v < 0][:3]
+
         results.append({
             "symbol": symbol,
             "name": get_symbol_name(symbol),
@@ -124,6 +135,10 @@ def score_all_stocks() -> pd.DataFrame:
             "final_score": round(final_score, 4),
             "rsi": round(float(feat.get("rsi_14", 0) or 0), 2),
             "volatility_20": round(float(feat.get("volatility_20", 0) or 0), 4),
+            "macro_nifty": float(feat.get("macro_nifty_drawdown", 0) or 0),
+            "macro_vix": float(feat.get("macro_vix_percentile", 0) or 0),
+            "shap_bullish": top_bullish,
+            "shap_bearish": top_bearish,
             "date": feat.get("date", ""),
         })
 

@@ -27,7 +27,8 @@ def load_training_data() -> pd.DataFrame:
                       price_vs_sma20, price_vs_sma50, price_vs_sma200,
                       rsi_14, macd_norm, macd_signal_norm, macd_hist_norm,
                       bb_width, atr_percent, volatility_20, volume_ratio,
-                      dist_52w_high, dist_52w_low, return_5d, return_10d, return_20d, label, label_reg
+                      dist_52w_high, dist_52w_low, return_5d, return_10d, return_20d,
+                      macro_nifty_drawdown, macro_vix_percentile, label, label_reg
                FROM features
                WHERE label IS NOT NULL AND label_reg IS NOT NULL
                ORDER BY date""",
@@ -47,6 +48,7 @@ DB_FEATURE_COLS = [
     "bb_width", "atr_percent", "volatility_20", "volume_ratio",
     "dist_52w_high", "dist_52w_low",
     "return_5d", "return_10d", "return_20d",
+    "macro_nifty_drawdown", "macro_vix_percentile"
 ]
 
 

@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 from src.core.config import HISTORICAL_YEARS
 from src.core.database import get_db, init_db
-from src.data.universe import get_symbols, get_symbol_name
+from src.data.universe import get_symbols, get_symbol_name, MACRO_SYMBOLS
 
 warnings.filterwarnings("ignore")
 
@@ -98,6 +98,39 @@ def fetch_and_store_all():
 
     print(f"\n  ✅ Loaded {success}/{total} stocks into database.\n")
     return success
+
+def fetch_and_store_macro():
+    """Download daily close data for Macro indices (NIFTY 50, VIX) and store in DB."""
+    init_db()
+    
+    print("━" * 60)
+    print("🌍 DOWNLOADING MACRO & INDEX DATA")
+    print("━" * 60)
+    
+    success = 0
+    for symbol, info in MACRO_SYMBOLS.items():
+        name = info["name"]
+        print(f"  Fetching {name} ({symbol})...", end=" ", flush=True)
+        # ^INDIAVIX and ^NSEI usually don't have volume or open/high/low properly formed sometimes, just grab Close
+        df = fetch_ohlcv(symbol)
+        if not df.empty:
+            with get_db() as conn:
+                for date, row in df.iterrows():
+                    conn.execute(
+                        """INSERT OR REPLACE INTO macro_data (symbol, date, close)
+                           VALUES (?, ?, ?)""",
+                        (symbol, date.strftime("%Y-%m-%d"), row["close"]),
+                    )
+            print(f"✓ {len(df)} rows")
+            success += 1
+        else:
+            print("✗ failed")
+            
+    return success
+
+if __name__ == "__main__":
+    fetch_and_store_macro()
+    fetch_and_store_all()
 
 
 if __name__ == "__main__":
