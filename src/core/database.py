@@ -174,6 +174,51 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_discoveries_date ON discoveries(date);
         """)
 
+        # Execute Auto-Migrations for V2 columns
+        features_columns = [row["name"] for row in conn.execute("PRAGMA table_info(features)").fetchall()]
+        signals_columns = [row["name"] for row in conn.execute("PRAGMA table_info(signals)").fetchall()]
+
+        features_migrations = {
+            "rel_strength_vs_nifty": "REAL",
+            "sector_momentum": "REAL",
+            "volume_zscore": "REAL",
+            "return_60d": "REAL",
+            "vol_adjusted_return": "REAL",
+            "nifty_return_20d": "REAL",
+            "vix_change_5d": "REAL",
+            "market_breadth": "REAL",
+            "fund_pe": "REAL",
+            "fund_pb": "REAL",
+            "fund_roe": "REAL",
+            "fund_debt_equity": "REAL",
+            "fund_earnings_growth": "REAL",
+            "fund_dividend_yield": "REAL",
+            "label_60d": "REAL",
+            "label_vol_scaled": "REAL",
+            "label_bucket": "INTEGER",
+        }
+
+        signals_migrations = {
+            "pred_return": "REAL",
+            "pred_return_low": "REAL",
+            "pred_return_high": "REAL",
+            "regime": "TEXT",
+        }
+
+        for col, dtype in features_migrations.items():
+            if col not in features_columns:
+                try:
+                    conn.execute(f"ALTER TABLE features ADD COLUMN {col} {dtype}")
+                except sqlite3.OperationalError:
+                    pass
+
+        for col, dtype in signals_migrations.items():
+            if col not in signals_columns:
+                try:
+                    conn.execute(f"ALTER TABLE signals ADD COLUMN {col} {dtype}")
+                except sqlite3.OperationalError:
+                    pass
+
 
 if __name__ == "__main__":
     init_db()
