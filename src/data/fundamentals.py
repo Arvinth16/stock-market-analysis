@@ -3,7 +3,6 @@ fundamentals.py — Scrapes and stores core valuation ratios and financial healt
 """
 
 import yfinance as yf
-import pandas as pd
 from src.core.database import get_db, init_db
 from src.data.universe import get_symbols, get_symbol_name
 

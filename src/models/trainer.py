@@ -15,7 +15,7 @@ from sklearn.metrics import (
 from sklearn.model_selection import RandomizedSearchCV, TimeSeriesSplit
 from scipy.stats import uniform, randint
 
-from src.core.config import XGBOOST_PARAMS, MODEL_DIR
+from src.core.config import MODEL_DIR
 from src.core.database import get_db
 
 

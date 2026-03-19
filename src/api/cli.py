@@ -204,7 +204,8 @@ def cmd_analyze(args):
 
     # 4. Volatility Context
     vol = row.get("volatility_20", 0)
-    if isinstance(vol, pd.Series): vol = float(vol.iloc[0]) if not vol.empty else 0.0
+    if isinstance(vol, pd.Series): 
+        vol = float(vol.iloc[0]) if not vol.empty else 0.0
     daily_move = (vol / math.sqrt(252)) * 100 if vol > 0 else 0.0
 
     # 5. Print Dashboard
@@ -306,7 +307,7 @@ def cmd_portfolio(args):
 
     try:
         df = score_all_stocks()
-    except Exception as e:
+    except Exception:
         print("  ✗ Error loading model data. Run 'india-stock train' first.")
         return
 
