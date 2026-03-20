@@ -54,6 +54,11 @@ def daily_pipeline():
         from src.discovery.discovery import run_discovery
         run_discovery()
 
+        # 6. Evaluate past predictions
+        logger.info("Step 6: Evaluating matured predictions (Paper PnL & accuracy)...")
+        from src.models.backtester import evaluate_past_predictions
+        evaluate_past_predictions()
+
         logger.info("✅ DAILY PIPELINE COMPLETED SUCCESSFULLY")
 
     except Exception as e:

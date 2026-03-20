@@ -5,6 +5,7 @@ V2: Ensemble predictions, SHAP explainability, confidence intervals, regime over
 """
 
 import os
+import json
 import numpy as np
 import pandas as pd
 import joblib
@@ -105,12 +106,23 @@ def score_all_stocks() -> pd.DataFrame:
         X = np.array([feature_vals])
 
         # Ensemble predictions
+        model_breakdown = {}
         if ensemble_clf is not None:
             prob = float(ensemble_clf.predict_proba(X)[0])
             pred_return = float(ensemble_reg.predict(X)[0])
             median, low, high = bootstrap_predictions(ensemble_reg, X)
             pred_low = float(low[0])
             pred_high = float(high[0])
+            
+            if hasattr(ensemble_clf, "models"):
+                model_breakdown = {
+                    "clf_xgb": round(float(ensemble_clf.models[0].predict_proba(X)[0][1]), 4),
+                    "clf_lgbm": round(float(ensemble_clf.models[1].predict_proba(X)[0][1]), 4),
+                    "clf_logreg": round(float(ensemble_clf.models[2].predict_proba(X)[0][1]), 4),
+                    "reg_xgb": round(float(ensemble_reg.models[0].predict(X)[0]), 4),
+                    "reg_lgbm": round(float(ensemble_reg.models[1].predict(X)[0]), 4),
+                    "reg_ridge": round(float(ensemble_reg.models[2].predict(X)[0]), 4),
+                }
         else:
             # Fallback to standalone XGBoost
             prob = float(xgb_model.predict_proba(X)[0][1])
@@ -189,6 +201,8 @@ def score_all_stocks() -> pd.DataFrame:
             "regime": regime,
             "shap_bullish": top_bullish,
             "shap_bearish": top_bearish,
+            "shap_top_features": json.dumps({"bullish": top_bullish, "bearish": top_bearish}),
+            "model_breakdown": json.dumps(model_breakdown),
             "date": feat.get("date", ""),
         })
 
@@ -211,12 +225,14 @@ def store_signals(df: pd.DataFrame):
                 """INSERT OR REPLACE INTO signals
                    (symbol, date, model_score, sentiment_score,
                     momentum_score, final_score, pred_return,
-                    pred_return_low, pred_return_high, regime)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    pred_return_low, pred_return_high, regime,
+                    model_breakdown, shap_top_features)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (row["symbol"], row["date"], row["model_score"],
                  row["sentiment"], row["momentum_20d"], row["final_score"],
                  row["predicted_return"], row["pred_return_low"],
-                 row["pred_return_high"], row["regime"]),
+                 row["pred_return_high"], row["regime"],
+                 row["model_breakdown"], row["shap_top_features"]),
             )
 
 

@@ -167,6 +167,16 @@ def init_db():
                 PRIMARY KEY (date)
             );
 
+            CREATE TABLE IF NOT EXISTS strategy_performance (
+                date      TEXT NOT NULL,
+                regime    TEXT NOT NULL,
+                hit_rate  REAL,
+                mae       REAL,
+                pnl       REAL,
+                benchmark_pnl REAL,
+                PRIMARY KEY (date)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_ohlcv_symbol ON ohlcv(symbol);
             CREATE INDEX IF NOT EXISTS idx_features_symbol ON features(symbol);
             CREATE INDEX IF NOT EXISTS idx_signals_date ON signals(date);
@@ -174,7 +184,7 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_discoveries_date ON discoveries(date);
         """)
 
-        # Execute Auto-Migrations for V2 columns
+        # Execute Auto-Migrations for V2 and V3 columns
         features_columns = [row["name"] for row in conn.execute("PRAGMA table_info(features)").fetchall()]
         signals_columns = [row["name"] for row in conn.execute("PRAGMA table_info(signals)").fetchall()]
 
@@ -203,6 +213,8 @@ def init_db():
             "pred_return_low": "REAL",
             "pred_return_high": "REAL",
             "regime": "TEXT",
+            "model_breakdown": "TEXT",  # V3
+            "shap_top_features": "TEXT", # V3
         }
 
         for col, dtype in features_migrations.items():

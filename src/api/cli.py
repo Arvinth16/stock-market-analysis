@@ -71,6 +71,8 @@ def cmd_news(args):
 def cmd_rank(args):
     """Score and rank stocks."""
     from src.models.scorer import score_all_stocks
+    from src.core.database import get_db
+    import json
 
     print(f"\n📈 Stock Rankings — {datetime.now().strftime('%Y-%m-%d')}\n")
 
@@ -92,33 +94,61 @@ def cmd_rank(args):
         print(f"  No stocks found for sector '{args.sector}'.\n")
         return
 
+    # Fetch Data Freshness timestamps
+    with get_db() as conn:
+        latest_px = conn.execute("SELECT MAX(date) as d FROM ohlcv").fetchone()["d"] or "Unknown"
+        latest_news = conn.execute("SELECT MAX(date) as d FROM news").fetchone()["d"] or "Unknown"
+        latest_sig = conn.execute("SELECT MAX(date) as d FROM signals").fetchone()["d"] or "Unknown"
+
+    print(f"  ⏱  Data Freshness:")
+    print(f"     Prices:  {latest_px}")
+    print(f"     News:    {latest_news}")
+    print(f"     Model:   {latest_sig}\n")
+
     # Format table
     table_data = []
     for i, (_, row) in enumerate(top.iterrows(), 1):
         ci = f"[{row.get('pred_return_low', 0)*100:+.1f}%, {row.get('pred_return_high', 0)*100:+.1f}%]"
+        score = row['final_score']
+        
+        # Signal Strength Bucket
+        if score > 0.70:
+            strength = "💪 STRONG"
+        elif score > 0.40:
+            strength = "🟡 MEDIUM"
+        else:
+            strength = "🔴 WEAK  "
+
+        # SHAP Explainability
+        shap_raw = row.get("shap_top_features", "{}")
+        try:
+            shap_data = json.loads(shap_raw) if isinstance(shap_raw, str) else shap_raw
+            bullish = shap_data.get("bullish", [])
+            driver = bullish[0]["feature"] if bullish else "mixed"
+        except (json.JSONDecodeError, TypeError):
+            driver = "mixed"
+
         table_data.append([
             i,
-            row["name"],
-            row["sector"],
-            f"{row['final_score']:.4f}",
+            f"{row['name']} ({row['symbol'].split('.')[0]})",
+            strength,
+            f"{score:.3f}",
             f"{row.get('predicted_return', 0)*100:+.1f}%",
             ci,
-            f"{row['model_score']:.3f}",
-            f"{row['sentiment']:+.3f}",
-            f"{row['momentum_20d']:+.1f}%",
+            f"Driven by: {driver}",
         ])
 
     # Regime banner
     regime = top.iloc[0].get("regime", "normal") if not top.empty else "normal"
     if regime == "crash":
-        print("  🚨🚨🚨 MARKET REGIME: CRASH — All bullish forecasts are heavily suppressed! 🚨🚨🚨")
+        print("  🚨🚨🚨 MARKET REGIME: CRASH — Bullish forecasts heavily suppressed! 🚨🚨🚨")
     elif regime == "stressed":
         print("  ⚠️  MARKET REGIME: STRESSED — Bullish signals dampened for safety.")
     else:
         print("  ✅ MARKET REGIME: NORMAL")
     print()
 
-    headers = ["#", "Stock", "Sector", "Score", "Return", "80% CI", "Model", "Sent", "Mom"]
+    headers = ["#", "Stock", "Signal", "Score", "Return", "80% CI", "Key Driver (AI)"]
     print(tabulate(table_data, headers=headers, tablefmt="rounded_grid"))
 
     print("\n  ⚠️  DISCLAIMER: Research signals only, NOT investment advice.")

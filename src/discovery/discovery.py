@@ -175,8 +175,22 @@ def onboard_stock(symbol: str) -> bool:
         fetch_and_store_ohlcv(symbol)
         df = load_ohlcv(symbol)
 
-        if df.empty or len(df) < 60:
-            print("✗ insufficient data")
+        if df.empty or len(df) < 250:
+            print("✗ insufficient history (need ≥ 250 days)")
+            return False
+
+        # Apply Hard Filters for Liquidity and Price
+        recent = df.tail(20)
+        avg_price = recent["close"].mean()
+        avg_volume = recent["volume"].mean()
+        adv = avg_price * avg_volume
+
+        if avg_price < 20.0:
+            print(f"✗ price too low (₹{avg_price:.2f} < ₹20)")
+            return False
+
+        if adv < 50_000_000:  # ₹5 Crore
+            print(f"✗ liquidity too low (ADV ₹{adv/10000000:.2f}Cr < ₹5Cr)")
             return False
 
         # Compute features
